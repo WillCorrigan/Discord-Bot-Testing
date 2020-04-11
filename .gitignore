@@ -1,4 +1,4 @@
 #env files for tokens
 *.env
-.sublime-project
-.sublime-workspace
+*.sublime-project
+*.sublime-workspace
