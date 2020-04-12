@@ -5,7 +5,7 @@ import re
 import os
 import roles
 import math
-from collections import defaultdict
+import operator
 
 class Game:
     def __init__(self):
@@ -17,6 +17,8 @@ class Game:
         self.hostname = "Unknown"
         self.dayNightChanger = 1
         self.cycle = 1
+        self.voteCounting = {}
+        self.isGoingToBeLynched = None
 
 
 
@@ -49,11 +51,21 @@ class Game:
 
     async def checkIfValidVoteTarget(self, player, channel, playerToVote):
         if any(x.name for x in self.playerlist if x.name == playerToVote and x.isAlive == True):
-            for player in self.playerlist:
-                player.voteTarget = playerToVote
             return True
         else:
             return False
+
+    async def updateVote(self, player, channel, playerToVote):
+        for x in self.playerlist:
+            if x.name == player:
+                x.voteTarget = playerToVote
+
+
+        ### Insert logic for finding to be lynched
+        # for v in self.isGoingToBeLynched.values():
+
+        # self.isGoingToBeLynched = max(self.voteCounting.items(), key=operator.itemgetter(1))[0]
+
 
     async def checkIfInGame(self, player):
         if any(x.name == player for x in self.playerlist):
@@ -62,21 +74,23 @@ class Game:
             return False
 
     async def voteCount(self, channel):
-        votes = {}
+        self.voteCounting = {}
         for x in self.playerlist:
-            if x.voteTarget == "Not Voting" and x.voteTarget not in votes.keys():
-                votes["Not Voting"] = 1
+            if x.voteTarget == "Not Voting" and x.voteTarget not in self.voteCounting.keys():
+                self.voteCounting["Not Voting"] = 1
             elif x.voteTarget == "Not Voting":
-                votes["Not Voting"] += 1
-            elif x.voteTarget not in votes.keys():
-                votes[x.voteTarget] = 1
+                self.voteCounting["Not Voting"] += 1
+            elif x.voteTarget not in self.voteCounting.keys():
+                self.voteCounting[x.voteTarget] = 1
             else:
-                votes[x.VoteTarget] += 1
-        for k, v in votes.items():
-            await channel.send(k + ' (' + str(v) + '):  ' + ",".join([x.name for x in self.playerlist if x.voteTarget == k]))
-        
+                self.voteCounting[x.voteTarget] += 1
+        for k, v in self.voteCounting.items():
+            await channel.send(k + ' (' + str(v) + '):  ' + ", ".join([x.name for x in self.playerlist if x.voteTarget == k]))
 
-
+    async def unvote(self, player, channel):
+        for x in self.playerlist:
+            if x.name == player:
+                x.voteTarget = "Not Voting"
 
 
 ############################################################# Game Setup Functions #############################################################
@@ -216,6 +230,13 @@ class Game:
             return f'Night {self.cycle -1}'
         else:
             return f'Day {self.cycle}'
+
+
+### End of Day ###
+
+    async def deadlineWrapUp(self, player, channel):
+        deadlineVotes = self.voteCount.votes
+        await channel.send(f'{deadlineVotes}')
 
 
 

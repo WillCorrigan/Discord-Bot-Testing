@@ -43,12 +43,16 @@ async def start_game(ctx):
 async def join_game(ctx):
     if await game.checkIfStarted() == False:
         await ctx.channel.send('A game has not been started! Type !start-game to begin.')
-    else:
+    elif await game.checkIfReady() == True:
+        await ctx.channel.send('The game roles have been assigned, please wait for the next game to join.')
+    elif await game.checkIfSetup() == True:
         player = ctx.author.name
         playerIdentity = ctx.author
         channel = ctx.channel
         mention = ctx.author.mention
         await game.addPlayer(player, channel, mention, playerIdentity)
+    else:
+        await ctx.channel.send('The game is currently in progress, please wait for the next game to join.')
 
 
 ###Leave the game###
@@ -155,10 +159,12 @@ async def vote_player(ctx, playerToVote):
         await channel.send('The game is about to begin, please wait before voting.')
     elif await game.checkIfCanVote(player, channel) == False:
         await channel.send("You are either dead or it is night and you can't vote.")
-    elif await game.checkIfValidVoteTarget(player, channel, playerToVote) == False:
-        await channel.send("That is not a valid vote target.")
     elif await game.checkIfValidVoteTarget(player, channel, playerToVote) == True:
+        await game.updateVote(player, channel, playerToVote)
         await channel.send(f'{mention} has voted for {playerToVote}.')
+        await game.voteCount(channel)
+    else:
+        await channel.send("That is not a valid vote target.")
 
 @bot.command(name='votecount', help='Vote count for current cycle.')
 async def vote_count(ctx):
@@ -173,6 +179,32 @@ async def vote_count(ctx):
     else:
         await game.voteCount(channel)
 
+
+@bot.command(name='unvote', help='Unvote the current player.')
+async def vote_player(ctx):
+    player = ctx.author.name
+    mention = ctx.author.mention
+    channel = ctx.channel
+    if await game.checkIfStarted() == False:
+        await channel.send('A game has not been started! Type !start-game to begin.')
+    elif await game.checkIfInGame(player) == False:
+        await channel.send('You are not in the game. Type !in to join the game before it starts.')
+    elif await game.checkIfSetup() == True:
+        await channel.send('The game is being set up, please wait before unvoting.')
+    elif await game.checkIfReady() == True:
+        await channel.send('The game is about to begin, please wait before unvoting.')
+    elif await game.checkIfCanVote(player, channel) == False:
+        await channel.send("You are either dead or it is night and you can't vote.")
+    else:
+        await game.unvote(player, channel)
+        await channel.send(f'{mention} has unvoted!')
+
+@bot.command(name='deadlinetest')
+async def deadline_test(ctx):
+    player = ctx.author.name
+    mention = ctx.author.mention
+    channel = ctx.channel
+    await game.deadlineWrapUp(player, channel)
 
 
 
