@@ -7,11 +7,10 @@ import roles
 import math
 
 class Game:
-    def __init__(self, client, cycle_time=30):
+    def __init__(self):
         self.isRunning = False
         self.phase = "Setup"
-        self.cycleTime = cycle_time
-        self.client = client
+        self.cycleTime = 30
         self.playerlist = []
         self.roleslist = []
         self.hostname = "Unknown"
@@ -97,6 +96,7 @@ class Game:
                 else:
                     continue
             await self.sendPlayerPMs()
+            await channel.send('Roles have been assigned, let the host know if you have not received a PM.')
             
 
             
