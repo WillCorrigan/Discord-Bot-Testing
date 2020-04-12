@@ -1,4 +1,5 @@
-#env files for tokens
 *.env
 *.sublime-project
 *.sublime-workspace
+__pycache__
+*.pyc
