@@ -5,6 +5,7 @@ import re
 import os
 import roles
 import math
+from collections import defaultdict
 
 class Game:
     def __init__(self):
@@ -14,6 +15,8 @@ class Game:
         self.playerlist = []
         self.roleslist = []
         self.hostname = "Unknown"
+        self.dayNightChanger = 1
+        self.cycle = 1
 
 
 
@@ -27,7 +30,51 @@ class Game:
         return self.isRunning
 
     async def checkIfSetup(self):
-        return self.phase
+        return self.phase == "Setup"
+
+    async def checkIfReady(self):
+        return self.phase == "Ready"
+
+    async def checkIfDay(self):
+        if "Day" in self.phase:
+            return True
+        else:
+            return False
+
+    async def checkIfCanVote(self, player, channel):
+        if (next((x.isAlive for x in self.playerlist if x.name == player), None) and ("Day" in self.phase)) and any(x.name == player for x in self.playerlist):
+            return True
+        else:
+            return False
+
+    async def checkIfValidVoteTarget(self, player, channel, playerToVote):
+        if any(x.name for x in self.playerlist if x.name == playerToVote and x.isAlive == True):
+            for player in self.playerlist:
+                player.voteTarget = playerToVote
+            return True
+        else:
+            return False
+
+    async def checkIfInGame(self, player):
+        if any(x.name == player for x in self.playerlist):
+            return True
+        else:
+            return False
+
+    async def voteCount(self, channel):
+        votes = {}
+        for x in self.playerlist:
+            if x.voteTarget == "Not Voting" and x.voteTarget not in votes.keys():
+                votes["Not Voting"] = 1
+            elif x.voteTarget == "Not Voting":
+                votes["Not Voting"] += 1
+            elif x.voteTarget not in votes.keys():
+                votes[x.voteTarget] = 1
+            else:
+                votes[x.VoteTarget] += 1
+        for k, v in votes.items():
+            await channel.send(k + ' (' + str(v) + '):  ' + ",".join([x.name for x in self.playerlist if x.voteTarget == k]))
+        
 
 
 
@@ -49,9 +96,9 @@ class Game:
 ### Add Player to the Game ###
 
     async def addPlayer(self, player, channel, mention, playerIdentity):
-        if not any(x.name ==player for x in self.playerlist):
-            playerAdd = Player(name=player, role='Unknown', playerID = playerIdentity)
-            self.playerlist.append(playerAdd)
+        if not any(x.name == player for x in self.playerlist):
+            player = Player(name=player, role='Unknown', playerID = playerIdentity)
+            self.playerlist.append(player)
             await channel.send('{} has joined the game!'.format(mention))
         else:
             await channel.send('{} is already in the game!'.format(mention))
@@ -106,7 +153,8 @@ class Game:
                 else:
                     continue
             await self.sendPlayerPMs()
-            await channel.send('Roles have been assigned, let the host know if you have not received a PM.')
+            self.phase = "Ready"
+            await channel.send('Roles have been assigned, let the host know if you have not received a PM. Start the game with !begin')
 
 
 
@@ -137,6 +185,39 @@ class Game:
         self.playerlist = []
         self.roleslist = []
         self.hostname = "Unknown"
+        self.dayNightChanger = 1
+        self.cycle = 1
+
+
+
+### Begin the Game ###
+
+    async def beginGame(self, channel):
+        if self.phase != "Ready":
+            await channel.send('The game cannot be started until all roles have been assigned.')
+        else:
+            await self.phaseChange(channel)
+
+
+    async def phaseChange(self, channel):
+        self.phase = "{}".format(await self.phaseCounter(self.dayNightChanger))
+        self.dayNightChanger += 1
+        await channel.send(f'The current phase is {self.phase}')
+
+
+
+### Phase Counter ###
+
+    async def phaseCounter(self, dayNightChanger):
+        if self.phase == "Ready":
+            return "Day 1"
+        elif dayNightChanger % 2 == 0:
+            self.cycle +=1
+            return f'Night {self.cycle -1}'
+        else:
+            return f'Day {self.cycle}'
+
+
 
 
 ############################################################# Player Class #############################################################
@@ -146,6 +227,8 @@ class Player:
         self.name = name
         self.role = role
         self.playerID = playerID
+        self.voteTarget = "Not Voting"
+        self.isAlive = True
 
     async def __str__(self):
         return(self.name + ": " + self.role)

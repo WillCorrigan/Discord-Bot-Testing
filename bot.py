@@ -81,18 +81,24 @@ async def playerlist(ctx):
 async def assign_roles(ctx):
     author = ctx.author
     player = ctx.author.name
+    channel = ctx.channel
     if await game.checkIfStarted() == False:
-        await ctx.channel.send('A game has not been started! Type !start-game to begin.')
+        await channel.send('A game has not been started! Type !start-game to begin.')
     elif await game.checkIfHost(player) == False:
-        await ctx.channel.send('Only the host can assign roles to players! The host is {}'.format(game.hostname))
+        await channel.send('Only the host can assign roles to players! The host is {}'.format(game.hostname))
     else:
         await ctx.channel.send('How many mafiosos do you want?')
         def check(m):
             return m.author.name == player
         msg = await bot.wait_for('message', check=check)
-        mafia = int(msg.content)
-        channel = ctx.channel
-        await game.assignRoles(mafia, channel)
+        try:
+            mafia = int(msg.content)
+            await game.assignRoles(mafia, channel)
+        except ValueError:
+            await channel.send('Please enter a valid number with !assign-roles again.')
+
+
+
 
 
 ###End the game early###
@@ -107,6 +113,67 @@ async def stop_game(ctx):
     else:
         await game.resetGame()
         await ctx.channel.send('The game has been stopped!')
+
+
+
+@bot.command(name='begin', help="Begin the game that's currently in setup")
+async def begin_game(ctx):
+    player = ctx.author.name
+    channel = ctx.channel
+    if await game.checkIfStarted() == False:
+        await channel.send('A game has not been started! Type !start-game to begin.')
+    elif await game.checkIfHost(player) == False:
+        await channel.send('Only the host can begin the game! The host is {}'.format(game.hostname))
+    else:
+        await game.beginGame(channel)
+
+@bot.command(name='force-cycle', help='Force a cycle change.')
+async def force_cycle(ctx):
+    channel = ctx.channel
+    player = ctx.author.name
+    if await game.checkIfStarted() == False:
+        await channel.send('A game has not been started! Type !start-game to begin.')
+    elif await game.checkIfHost(player) == False:
+        await channel.send('Only the host can force the cycle! The host is {}'.format(game.hostname))
+    elif await game.checkIfReady() == True:
+        await channel.send("The game is ready to start, you can't force the cycle until it begins.")
+    else:
+        await game.phaseChange(channel)
+
+@bot.command(name='vote', help='Vote for a player with !vote playername')
+async def vote_player(ctx, playerToVote):
+    player = ctx.author.name
+    mention = ctx.author.mention
+    channel = ctx.channel
+    if await game.checkIfStarted() == False:
+        await channel.send('A game has not been started! Type !start-game to begin.')
+    elif await game.checkIfInGame(player) == False:
+        await channel.send('You are not in the game. Type !in to join the game before it starts.')
+    elif await game.checkIfSetup() == True:
+        await channel.send('The game is being set up, please wait before voting.')
+    elif await game.checkIfReady() == True:
+        await channel.send('The game is about to begin, please wait before voting.')
+    elif await game.checkIfCanVote(player, channel) == False:
+        await channel.send("You are either dead or it is night and you can't vote.")
+    elif await game.checkIfValidVoteTarget(player, channel, playerToVote) == False:
+        await channel.send("That is not a valid vote target.")
+    elif await game.checkIfValidVoteTarget(player, channel, playerToVote) == True:
+        await channel.send(f'{mention} has voted for {playerToVote}.')
+
+@bot.command(name='votecount', help='Vote count for current cycle.')
+async def vote_count(ctx):
+    channel = ctx.channel
+    player = ctx.author.name
+    if await game.checkIfStarted() == False:
+        await channel.send('A game has not been started! Type !start-game to begin.')
+    elif await game.checkIfInGame(player) == False:
+        await channel.send('You are not in the game. Type !in to join the game before it starts.')
+    elif await game.checkIfDay() == False:
+        await channel.send('It is not currently day time.')
+    else:
+        await game.voteCount(channel)
+
+
 
 
 bot.run(TOKEN)
