@@ -7,6 +7,7 @@ import roles
 import math
 import operator
 
+
 class Game:
     def __init__(self):
         self.isRunning = False
@@ -18,7 +19,7 @@ class Game:
         self.dayNightChanger = 1
         self.cycle = 1
         self.voteCounting = {}
-        self.isGoingToBeLynched = None
+        self.isGoingToBeLynched = "Nobody"
 
 
 
@@ -55,42 +56,136 @@ class Game:
         else:
             return False
 
-    async def updateVote(self, player, channel, playerToVote):
-        for x in self.playerlist:
-            if x.name == player:
-                x.voteTarget = playerToVote
-
-
-        ### Insert logic for finding to be lynched
-        # for v in self.isGoingToBeLynched.values():
-
-        # self.isGoingToBeLynched = max(self.voteCounting.items(), key=operator.itemgetter(1))[0]
-
-
     async def checkIfInGame(self, player):
         if any(x.name == player for x in self.playerlist):
             return True
         else:
             return False
 
-    async def voteCount(self, channel):
-        self.voteCounting = {}
-        for x in self.playerlist:
-            if x.voteTarget == "Not Voting" and x.voteTarget not in self.voteCounting.keys():
-                self.voteCounting["Not Voting"] = 1
-            elif x.voteTarget == "Not Voting":
-                self.voteCounting["Not Voting"] += 1
-            elif x.voteTarget not in self.voteCounting.keys():
-                self.voteCounting[x.voteTarget] = 1
-            else:
-                self.voteCounting[x.voteTarget] += 1
-        for k, v in self.voteCounting.items():
-            await channel.send(k + ' (' + str(v) + '):  ' + ", ".join([x.name for x in self.playerlist if x.voteTarget == k]))
 
-    async def unvote(self, player, channel):
+############################################################# Vote Logic #############################################################
+
+### When someone votes, append their name to target in dictionary and then delete them from their previous vote ###
+
+    async def updateVote(self, player, channel, playerToVote, mention):
         for x in self.playerlist:
             if x.name == player:
-                x.voteTarget = "Not Voting"
+                if playerToVote not in self.voteCounting:
+                    if x.voteTarget != playerToVote:
+                        self.voteCounting[playerToVote] = []
+                        self.voteCounting[playerToVote].append(x.name)
+                        self.voteCounting[x.voteTarget].remove(x.name)
+                        x.voteTarget = playerToVote
+                        await channel.send(f'{mention} voted for {playerToVote}!')
+                        await self.voteLogic(channel)
+                        await self.voteCount(channel)
+                    else:
+                        await channel.send("You are already voting for that player.")
+                else:
+                    if x.voteTarget != playerToVote:
+                        self.voteCounting[playerToVote].append(x.name)
+                        self.voteCounting[x.voteTarget].remove(x.name)
+                        x.voteTarget = playerToVote
+                        await channel.send(f'{mention} voted for {playerToVote}!')
+                        await self.voteLogic(channel)
+                        await self.voteCount(channel)
+                    else:
+                        await channel.send("You are already voting for that player.")
+
+
+
+
+### When someone unvotes, remove their name from target in dictionary (names are stored in a list in the dictionary) ###
+### Append to "Not Voting" dictionary ###
+
+    async def unvote(self, player, channel, mention):
+        for x in self.playerlist:
+            if x.name == player:
+                if x.voteTarget != "Not Voting":
+                    self.voteCounting[x.voteTarget].remove(x.name)
+                    x.voteTarget = "Not Voting"
+                    if "Not Voting" not in self.voteCounting:
+                        self.voteCounting["Not Voting"] = []
+                        self.voteCounting["Not Voting"].append(x.name)
+                    else:
+                        self.voteCounting["Not Voting"].append(x.name)
+                    await channel.send(f'{mention} has unvoted!')
+                    await self.voteLogic(channel)
+                else:
+                    await channel.send("You are already not voting.")
+
+
+
+### Do a vote count ### 
+
+    async def voteCount(self, channel):
+        for targets, voters in self.voteCounting.items():
+            if len(voters) == 0:
+                continue
+            await channel.send(f"{targets} ({len(voters)}):" + " " + ", ".join(voters))
+            await channel.send(f'{self.isGoingToBeLynched} is up for lynch!')
+
+
+### Vote logic??? ###
+
+    async def voteLogic(self, channel):
+        votingLogicDict = {k:len(v) for k, v in self.voteCounting.items()}
+        maxVote = max(votingLogicDict.items(), key=lambda x : x[1])
+        print(maxVote)
+        if maxVote[1] == 0:
+            self.isGoingToBeLynched = "Nobody"
+        else:
+            countList = []
+            for key, value in votingLogicDict.items():
+                print(key, value)
+                if value == maxVote[1]:
+                    countList.append(key)
+            if len(countList) == 1 and maxVote[0] == "Not Voting":
+                self.isGoingToBeLynched = "Nobody"        
+            elif len(countList) == 1:
+                self.isGoingToBeLynched = maxVote[0]
+
+
+    # async def updateVote(self, player, channel, playerToVote):
+    #     self.getMaxVote()
+    #     for x in self.playerlist:
+    #         if x.name == player:
+    #             x.voteTarget = playerToVote
+
+    # async def getMaxVote(self):
+    #     self.isGoingToBeLynched = max(self.voteCounting.items(), key=operator.itemgetter(1))[0]
+    #     maxName = None
+    #     maxCount = 0
+    #     for name, count in voteCounting.items() :
+    #         if name != "Not Voting" and count > maxCount:
+    #         maxName = name
+    #         maxCount = count
+
+
+
+
+    # async def voteCount(self, channel):
+    #         for x in self.playerlist:
+    #             if x.voteTarget == "Not Voting" and x.voteTarget not in self.voteCounting.keys():
+    #                 self.voteCounting["Not Voting"] = 1
+    #             elif x.voteTarget == "Not Voting":
+    #                 self.voteCounting["Not Voting"] += 1
+    #             elif x.voteTarget not in self.voteCounting.keys():
+    #                 self.voteCounting[x.voteTarget] = 1
+    #             else:
+    #                 self.voteCounting[x.voteTarget] += 1
+
+    # async def printVoteCount(self, channel):
+    #         for k, v in self.voteCounting.items():
+    #             await channel.send(k + ' (' + str(v) + '):  ' + ", ".join([x.name for x in self.playerlist if x.voteTarget == k]))
+
+    # async def unvote(self, player, channel):
+    #     for x in self.playerlist:
+    #         if x.name == player:
+    #             for k,v in self.voteCounting.items():
+    #                 if x.voteTarget in k:
+    #                     v -= 1
+    #             x.voteTarget = "Not Voting"
 
 
 ############################################################# Game Setup Functions #############################################################
@@ -211,6 +306,9 @@ class Game:
             await channel.send('The game cannot be started until all roles have been assigned.')
         else:
             await self.phaseChange(channel)
+            self.voteCounting["Not Voting"] = []
+            for x in self.playerlist:
+                self.voteCounting["Not Voting"].append(x.name)
 
 
     async def phaseChange(self, channel):
