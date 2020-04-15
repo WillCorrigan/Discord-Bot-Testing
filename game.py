@@ -1,4 +1,4 @@
-# game.py 
+# game.py
 import asyncio
 import random
 import re
@@ -20,6 +20,7 @@ class Game:
         self.cycle = 1
         self.voteCounting = {}
         self.isGoingToBeLynched = "Nobody"
+        self.killedList = []
 
 
 
@@ -116,13 +117,16 @@ class Game:
 
 
 
-### Do a vote count ### 
+### Do a vote count ###
 
-    async def voteCount(self, channel):
+    async def voteCount(self, channel, deadline=False):
         for targets, voters in self.voteCounting.items():
             if len(voters) == 0:
                 continue
             await channel.send(f"{targets} ({len(voters)}):" + " " + ", ".join(voters))
+        if deadline == True:
+            await channel.send(f'{self.isGoingToBeLynched} has been lynched, he was a ' + ' '.join([x.role.name for x in self.playerlist if x.name == self.isGoingToBeLynched]))
+        else:
             await channel.send(f'{self.isGoingToBeLynched} is up for lynch!')
 
 
@@ -131,61 +135,20 @@ class Game:
     async def voteLogic(self, channel):
         votingLogicDict = {k:len(v) for k, v in self.voteCounting.items()}
         maxVote = max(votingLogicDict.items(), key=lambda x : x[1])
-        print(maxVote)
         if maxVote[1] == 0:
             self.isGoingToBeLynched = "Nobody"
         else:
             countList = []
             for key, value in votingLogicDict.items():
-                print(key, value)
                 if value == maxVote[1]:
                     countList.append(key)
             if len(countList) == 1 and maxVote[0] == "Not Voting":
-                self.isGoingToBeLynched = "Nobody"        
+                self.isGoingToBeLynched = "Nobody"
             elif len(countList) == 1:
                 self.isGoingToBeLynched = maxVote[0]
-
-
-    # async def updateVote(self, player, channel, playerToVote):
-    #     self.getMaxVote()
-    #     for x in self.playerlist:
-    #         if x.name == player:
-    #             x.voteTarget = playerToVote
-
-    # async def getMaxVote(self):
-    #     self.isGoingToBeLynched = max(self.voteCounting.items(), key=operator.itemgetter(1))[0]
-    #     maxName = None
-    #     maxCount = 0
-    #     for name, count in voteCounting.items() :
-    #         if name != "Not Voting" and count > maxCount:
-    #         maxName = name
-    #         maxCount = count
-
-
-
-
-    # async def voteCount(self, channel):
-    #         for x in self.playerlist:
-    #             if x.voteTarget == "Not Voting" and x.voteTarget not in self.voteCounting.keys():
-    #                 self.voteCounting["Not Voting"] = 1
-    #             elif x.voteTarget == "Not Voting":
-    #                 self.voteCounting["Not Voting"] += 1
-    #             elif x.voteTarget not in self.voteCounting.keys():
-    #                 self.voteCounting[x.voteTarget] = 1
-    #             else:
-    #                 self.voteCounting[x.voteTarget] += 1
-
-    # async def printVoteCount(self, channel):
-    #         for k, v in self.voteCounting.items():
-    #             await channel.send(k + ' (' + str(v) + '):  ' + ", ".join([x.name for x in self.playerlist if x.voteTarget == k]))
-
-    # async def unvote(self, player, channel):
-    #     for x in self.playerlist:
-    #         if x.name == player:
-    #             for k,v in self.voteCounting.items():
-    #                 if x.voteTarget in k:
-    #                     v -= 1
-    #             x.voteTarget = "Not Voting"
+            elif len(countList) == 2 and "Not Voting" in countList:
+                countList.remove("Not Voting")
+                self.isGoingToBeLynched = countList[0]
 
 
 ############################################################# Game Setup Functions #############################################################
@@ -317,7 +280,6 @@ class Game:
         await channel.send(f'The current phase is {self.phase}')
 
 
-
 ### Phase Counter ###
 
     async def phaseCounter(self, dayNightChanger):
@@ -332,10 +294,14 @@ class Game:
 
 ### End of Day ###
 
-    async def deadlineWrapUp(self, player, channel):
-        deadlineVotes = self.voteCount.votes
-        await channel.send(f'{deadlineVotes}')
-
+    async def deadlineWrapUp(self, channel):
+        await self.voteCount(channel, True)
+        for toBeKilledPlayer in self.playerlist:
+            if toBeKilledPlayer.name == self.isGoingToBeLynched:
+                toBeKilledPlayer.isAlive = False
+                self.killedList.append(toBeKilledPlayer)
+                self.playerlist.remove(toBeKilledPlayer)
+                
 
 
 
@@ -351,5 +317,3 @@ class Player:
 
     async def __str__(self):
         return(self.name + ": " + self.role)
-
-

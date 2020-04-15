@@ -1,6 +1,12 @@
 *.env
 *.sublime-project
 *.sublime-workspace
-
-/__pycache__
+*.sublime-project
+*.code-workspace
 *.pyc
+*.opt-2.pyc
+*.cpython-37.opt-2.pyc
+
+/.vscode
+/__pycache__
+/__pycache__
