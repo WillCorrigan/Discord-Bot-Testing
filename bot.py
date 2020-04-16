@@ -61,9 +61,10 @@ async def join_game(ctx):
 	elif await guildInstances[guildID][channelID].checkIfSetup() == True:
 		player = ctx.author.name
 		playerIdentity = ctx.author
+		playerMention = ctx.author.mention
 		channel = ctx.channel
 		mention = ctx.author.mention
-		await guildInstances[guildID][channelID].addPlayer(player, channel, mention, playerIdentity)
+		await guildInstances[guildID][channelID].addPlayer(player, channel, mention, playerIdentity, playerMention)
 	else:
 		await ctx.channel.send('The game is currently in progress, please wait for the next game to join.')
 
@@ -109,6 +110,8 @@ async def assign_roles(ctx):
 		await channel.send('A game has not been started! Type !start-game to begin.')
 	elif await guildInstances[guildID][channelID].checkIfHost(player) == False:
 		await channel.send('Only the host can assign roles to players! The host is {}'.format(guildInstances[guildID][channelID].hostname))
+	elif await guildInstances[guildID][channelID].checkIfDay() or await guildInstances[guildID][channelID].checkIfNight() == True:
+		await channel.send("The game is in progress, you can't re-assign roles.")
 	else:
 		await ctx.channel.send('How many mafiosos do you want?')
 		def check(m):
@@ -150,6 +153,8 @@ async def begin_game(ctx):
 		await channel.send('A game has not been started! Type !start-game to begin.')
 	elif await guildInstances[guildID][channelID].checkIfHost(player) == False:
 		await channel.send('Only the host can begin the game! The host is {}'.format(guildInstances[guildID][channelID].hostname))
+	elif await guildInstances[guildID][channelID].checkIfDay() or await guildInstances[guildID][channelID].checkIfNight() == True:
+		await channel.send("The game is in progress, you can't begin the game again.")
 	else:
 		await guildInstances[guildID][channelID].beginGame(channel)
 
@@ -216,7 +221,6 @@ async def vote_count(ctx):
 		await channel.send('It is not currently day time.')
 	else:
 		await guildInstances[guildID][channelID].voteCount(channel)
-		# await guildInstances[guildID][channelID].printVoteCount(channel)
 
 
 
@@ -254,13 +258,6 @@ async def deadline_test(ctx):
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
 	await guildInstances[guildID][channelID].deadlineWrapUp(channel)
-
-@bot.command(name='votelogic')
-async def vote_logic(ctx):
-	channel = ctx.channel
-	guildID = ctx.guild.id
-	channelID = ctx.channel.id
-	await guildInstances[guildID][channelID].voteLogic(channel)
 
 
 bot.run(TOKEN)
