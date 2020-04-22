@@ -453,11 +453,13 @@ class Game:
 			await channel.send("The mafia team was: " + ', '.join(x.name for x in self.playerlist if x.role.alignment == "Mafia"))
 			self.isRunning = False
 			await self.resetGame()
-		if mafiacount == 0:
+		elif mafiacount == 0:
 			await channel.send("The game has ended, Town wins!")
 			await channel.send("The mafia team was: " + ', '.join(x for x in self.playerlist if x.role.alignment == "Mafia"))
 			self.isRunning = False
 			await resetGame()
+		else:
+			return False
 
 
 
@@ -488,14 +490,14 @@ class Game:
 				if "Night" in self.phase:
 					await self.nightActionsWrapUp(channel)
 					await self.phaseChange(channel)
-					await self.checkIfGameOver(channel)
-					self.cycleCounter = 0
+					if await self.checkIfGameOver(channel) == False:
+						self.cycleCounter = 0
 				elif "Day" in self.phase:
 					await self.deadlineWrapUp(channel)
 					await self.phaseChange(channel)
-					await self.checkIfGameOver(channel)
-					await self.sendMafiaKillRequest()
-					self.cycleCounter = 0
+					if await self.checkIfGameOver(channel) == False:
+						await self.sendMafiaKillRequest()
+						self.cycleCounter = 0
 			else:
 				continue
 

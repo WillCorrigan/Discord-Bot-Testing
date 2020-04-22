@@ -33,17 +33,6 @@ async def on_ready():
 
 ### Start Game ###
 
-@bot.command()
-async def load(extension_name : str):
-    """Loads an extension."""
-    try:
-        bot.load_extension(extension_name)
-    except (AttributeError, ImportError) as e:
-        await bot.say("```py\n{}: {}\n```".format(type(e).__name__, str(e)))
-        return
-    await bot.say("{} loaded.".format(extension_name))
-
-
 
 @bot.command(name='start-game', help='Initiate the game. Players can !in to join afterwards.')
 async def start_game(ctx):
@@ -62,7 +51,7 @@ async def start_game(ctx):
 	await createGuildRoles(ctx)
 
 
-@bot.command()
+@bot.command(hidden=True)
 async def createGuildRoles(ctx):
 	guildID = ctx.guild.id
 	await ctx.guild.create_role(name="MafiaGame")
@@ -152,7 +141,7 @@ async def assign_roles(ctx):
 		except ValueError:
 			await channel.send('Please enter a valid number with !assign-roles again.')
 
-@bot.command()
+@bot.command(hidden=True)
 async def assignGuildRoles(ctx):
 	guildID = ctx.guild.id
 	guild = ctx.guild
@@ -316,7 +305,7 @@ async def unvote_player(ctx):
 
 ### test a deadline function ###
 
-@bot.command(name='deadlinetest')
+@bot.command(name='deadlinetest', hidden=True)
 async def deadline_test(ctx):
 	player = ctx.author.name
 	mention = ctx.author.mention
@@ -337,7 +326,7 @@ async def actions_test(ctx, target):
 
 
 
-@bot.command()
+@bot.command(hidden=True)
 async def text_permissions(ctx):
 	guild = ctx.message.guild
 	guildID = ctx.guild.id
