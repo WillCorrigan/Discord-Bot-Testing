@@ -8,12 +8,15 @@ import math
 import operator
 import time
 import discord
+from discord.ext import commands
+
+bot = commands.Bot(command_prefix = '!')
 
 class Game:
 	def __init__(self):
 		self.isRunning = False
 		self.phase = "Setup"
-		self.cycleTime = 30
+		self.cycleTime = 10
 		self.playerlist = []
 		self.roleslist = []
 		self.hostname = "Unknown"
@@ -22,6 +25,15 @@ class Game:
 		self.voteCounting = {}
 		self.isGoingToBeLynched = "Nobody"
 		self.killedList = []
+		self.cycleCounter = 0
+		self.mafiaCount = 0
+		self.mafiaRoleID = None
+		self.gameRoleID = None
+		self.mafiachannelID = None
+		self.gamechannelCTX = None
+		self.nightkillrequest = None
+		self.emojiChoices = None
+		self.nightkillTarget = None
 
 
 
@@ -144,7 +156,9 @@ class Game:
 					self.voteCounting[playerObject.voteTarget].remove(playerObject)
 					playerObject.voteTimestamp = time.time()
 					playerObject.voteTarget = "Not Voting"
-					self.voteCounting["Not Voting"].append(playerObject)					
+					self.voteCounting["Not Voting"].append(playerObject)
+					await self.voteLogic(channel)	
+					await channel.send(f'{mention} has unvoted!')				
 				else:
 					await channel.send("You are already not voting.")
 
@@ -162,15 +176,24 @@ class Game:
 				continue
 			content.append((f"{targets} ({len(voters)}): " + ', '.join(x.name for x in voters)))
 		contentjoined = '\n'.join(content)
-
-		voteEmbed = discord.Embed(title=f'{self.phase} Vote Count', description=f'This is the {self.phase} vote count.', color=0xEE8700)
-		voteEmbed.set_thumbnail(url="https://pbs.twimg.com/profile_images/440209611983839232/-9-_fYB5_400x400.png")
-		voteEmbed.add_field(name="Votes:", value=contentjoined)
 		if deadline == True:
-			voteEmbed.add_field(name=f'{self.phase} Result:',value=f'{playerMention} has been lynched, he was a ' + ' '.join([x.role.name for x in self.playerlist if x.name == self.isGoingToBeLynched]), inline=False)
+			voteEmbed = discord.Embed(title=f'{self.phase} Final Vote Count', description=f'This is the {self.phase} final vote count.', color=0xEE8700)
+			voteEmbed.set_thumbnail(url="https://pbs.twimg.com/profile_images/440209611983839232/-9-_fYB5_400x400.png")
+			voteEmbed.add_field(name="Votes:", value=contentjoined)
+			voteEmbed.set_footer(text=f'There are currently {self.cycleTime - self.cycleCounter} seconds left before night ends. Make sure you send all actions to the bot!')
+			if self.isGoingToBeLynched == "Nobody":
+				voteEmbed.add_field(name=f'{self.phase} Result:', value=f'Nobody has been lynched!', inline=False)
+			else:
+				voteEmbed.add_field(name=f'{self.phase} Result:', value=f'{playermention} has been lynched, he was a ' + ' '.join([x.role.name for x in self.playerlist if x.name == self.isGoingToBeLynched]), inline=False)
 		else:
-			voteEmbed.add_field(name="Current Lynch Target:", value=f'{playermention} is up for lynch!', inline=False)
-		voteEmbed.set_footer(text=f'There is currently <inserttimeremaining> left before lynch. Make sure you vote!')
+			voteEmbed = discord.Embed(title=f'{self.phase} Vote Count', description=f'This is the {self.phase} vote count.', color=0xEE8700)
+			voteEmbed.set_thumbnail(url="https://pbs.twimg.com/profile_images/440209611983839232/-9-_fYB5_400x400.png")
+			voteEmbed.add_field(name="Votes:", value=contentjoined)
+			if self.isGoingToBeLynched == "Nobody":
+				voteEmbed.add_field(name="Current Lynch Target:", value=f'Nobody!', inline=False)
+			else:
+				voteEmbed.add_field(name="Current Lynch Target:", value=f'{playermention} is up for lynch!', inline=False)
+			voteEmbed.set_footer(text=f'There are currently {self.cycleTime - self.cycleCounter} seconds left before lynch. Make sure you vote!')
 		await channel.send(embed=voteEmbed)
 
 
@@ -222,9 +245,10 @@ class Game:
 
 
 
-### Assign Roles and then PM Players ###
+### Assign Roles and then PM Players - Will be reworked when custom setups get enabled###
 
 	async def assignRoles(self, mafia:int, channel):
+		self.mafiaCount = mafia
 		##re-enable to stop games having over 50% mafia
 		# if mafia >= math.floor(len(self.playerlist)/2):
 		#     await channel.send("You can't have more mafia than players/townies! Try !assign-roles again or get more people.")
@@ -256,14 +280,14 @@ class Game:
 ### Send Player PMs after Roles Assigned ###
 
 	async def sendPlayerPMs(self):
-		mafiaCount = 0
-		for y in self.playerlist:
-			if y.role.alignment == 'Mafia':
-				mafiaCount += 1
-		if mafiaCount >= 2:
+		if self.mafiaCount >= 2:
 			for x in self.playerlist:
-				await x.playerID.create_dm()
-				await x.playerID.dm_channel.send(x.role.info + 'Your team is ' + ', '.join([x.name for x in self.playerlist if x.role.alignment == 'Mafia']))
+				if x.role.alignment == "Mafia":
+					await x.playerID.create_dm()
+					await x.playerID.dm_channel.send(x.role.info + 'Your team is ' + ', '.join([x.name for x in self.playerlist if x.role.alignment == 'Mafia']))
+				else:
+					await x.playerID.create_dm()
+					await x.playerID.dm_channel.send(x.role.info)
 		else:
 			for x in self.playerlist:
 				await x.playerID.create_dm()
@@ -276,12 +300,21 @@ class Game:
 	async def resetGame(self):
 		self.isRunning = False
 		self.phase = "Setup"
-		self.cycleTime = 30
+		self.cycleTime = 10
 		self.playerlist = []
 		self.roleslist = []
 		self.hostname = "Unknown"
 		self.dayNightChanger = 1
 		self.cycle = 1
+		self.voteCounting = {}
+		self.isGoingToBeLynched = "Nobody"
+		self.killedList = []
+		self.cycleCounter = 0
+		self.mafiaCount = 0
+		self.mafiaRoleID = None
+		self.gameRoleID = None
+		self.mafiachannelID = None
+		self.gamechannelCTX = None
 
 
 
@@ -295,6 +328,12 @@ class Game:
 			self.voteCounting["Not Voting"] = []
 			for x in self.playerlist:
 				self.voteCounting["Not Voting"].append(x)
+			mafiarolesEmbed = discord.Embed(title="Mafia Team", description=f'The current mafia team members are as follows:', color=0xEE8700)
+			value = "\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Mafia") 
+			mafiarolesEmbed.add_field(name="Role List", value=value, inline=True)
+			await self.mafiachannelID.send(embed=mafiarolesEmbed)
+			
+			await self.cycleFunctionsAuto(channel, self.phase)
 
 
 	async def phaseChange(self, channel):
@@ -323,7 +362,147 @@ class Game:
 			if toBeKilledPlayer.name == self.isGoingToBeLynched:
 				toBeKilledPlayer.isAlive = False
 				self.killedList.append(toBeKilledPlayer)
-				self.playerlist.remove(toBeKilledPlayer)
+				
+
+	async def resetVotingRecords(self):
+		self.voteCounting = {}
+		self.voteCounting["Not Voting"] = []
+		for playerObject in self.playerlist:
+			if playerObject.isAlive == True:
+				self.voteCounting["Not Voting"].append(playerObject)
+				playerObject.voteTarget = "Not Voting"
+
+
+### Send night action reminder to players ###
+	# async def getNightActionPlayers(self):
+	# 	for playerObject in self.playerlist:
+	# 		if playerObject.role.has_night_action == True:
+	# 			sendNightPMs(playerObject)
+
+
+	# async def sendNightPMs(self, player):
+	# 	await player.playerID.create_dm()
+
+	# 	if player.role.has_night_action and player.role.sends_mafia_kill == False:
+	# 		await channel.send("Please type !Action targetname to pick a target for your action")
+	# 		def check(m):
+	# 					return "!Action" in m.content and player.name == m.author.name and channel == player.playerID.dm_channel
+	# 		msg = await bot.wait_for('message', check=check)
+	# 		try:
+	# 			mafia = int(msg.content)
+	# 			await guildInstances[guildID][channelID].assignRoles(mafia, channel)
+	# 		except ValueError:
+	# 			await channel.send('Please enter a valid number with !assign-roles again.') 
+
+
+
+
+
+
+	# 	if player.role.sends_mafia_kill == True:
+	# 		await player.playerID.dm_channel.send("Please type !NK playername to pick a target to use your mafia night kill on.")
+
+	# 	await playerObject.playerID.dm_channel.send(f'It is currently {self.phase}. ')
+
+
+
+### Mafia NK reminders ### 
+
+
+
+	async def sendMafiaKillRequest(self):
+		channel = self.mafiachannelID
+		emojiList = [u"\U0001F1E6", u"\U0001F1E7", u"\U0001F1E8", u"\U0001F1E9", u"\U0001F1EA", u"\U0001F1EB", u"\U0001F1EC", u"\U0001F1ED", u"\U0001F1EE", u"\U0001F1EF", u"\U0001F1F0"]
+		mafiachannelEmbed = discord.Embed(title=f'{self.phase} Night Kill', description=f'Please react to this post to kill someone', color=0xEE8700)
+		choices = [playerObject.name for playerObject in self.playerlist if playerObject.isAlive == True]
+		self.emojiChoices = dict(zip(emojiList, choices))
+		value = "\n".join("{} - {}".format(*item) for item in self.emojiChoices.items())
+		mafiachannelEmbed.add_field(name="Please vote for who you want to lynch", value=value, inline=True)
+		message_1 = await channel.send(embed=mafiachannelEmbed)
+		self.nightkillrequest = message_1.id
+
+		for emojireaction in self.emojiChoices.keys():
+			await message_1.add_reaction(emojireaction)
+
+
+	async def assessMafiaKillRequest(self):
+		channel = self.mafiachannelID
+		message_1_get = await channel.fetch_message(self.nightkillrequest)
+		counts = {react.emoji: react.count for react in message_1_get.reactions}
+		winner = max(self.emojiChoices, key=counts.get)
+		await channel.send(f'{self.emojiChoices[winner]} is the kill')
+		self.nightkillTarget = self.emojiChoices[winner]
+
+
+
+
+
+	async def checkIfGameOver(self, channel):
+		mafiacount = 0
+		towncount = 0
+		for playerObject in self.playerlist:
+			if playerObject.isAlive == True:
+				if playerObject.role.alignment == "Town":
+					towncount += 1
+				elif playerObject.role.alignment == "Mafia":
+					mafiacount += 1
+			else:
+				continue
+		if mafiacount >= towncount:
+			await channel.send("The game has ended, Mafia wins!")
+			await channel.send("The mafia team was: " + ', '.join(x.name for x in self.playerlist if x.role.alignment == "Mafia"))
+			self.isRunning = False
+			await self.resetGame()
+		if mafiacount == 0:
+			await channel.send("The game has ended, Town wins!")
+			await channel.send("The mafia team was: " + ', '.join(x for x in self.playerlist if x.role.alignment == "Mafia"))
+			self.isRunning = False
+			await resetGame()
+
+
+
+
+### End of Night Actions ###
+
+	async def nightActionsWrapUp(self, channel):
+		for playerObject in self.playerlist:
+			if playerObject.name == self.nightkillTarget:
+				playerObject.isAlive = False
+				self.killedList.append(playerObject)
+				await channel.send(f'{playerObject.name} has been killed, he was {playerObject.role.name}!')
+				await self.resetVotingRecords()
+
+
+
+
+### Combine phase functions ###
+
+	async def cycleFunctionsAuto(self, channel, phase):
+		while self.isRunning == True:
+			await asyncio.sleep(1)
+			self.cycleCounter += 1
+			print(self.cycleCounter)
+			if "Night" in self.phase and self.cycleCounter == (self.cycleTime - 5):
+				await self.assessMafiaKillRequest()
+			if self.cycleCounter == self.cycleTime:
+				if "Night" in self.phase:
+					await self.nightActionsWrapUp(channel)
+					await self.phaseChange(channel)
+					await self.checkIfGameOver(channel)
+					self.cycleCounter = 0
+				elif "Day" in self.phase:
+					await self.deadlineWrapUp(channel)
+					await self.phaseChange(channel)
+					await self.checkIfGameOver(channel)
+					await self.sendMafiaKillRequest()
+					self.cycleCounter = 0
+			else:
+				continue
+
+
+
+
+
 				
 
 
@@ -342,123 +521,3 @@ class Player:
 
 	async def __str__(self):
 		return(self.name + ": " + self.role)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-########## deprecated ###################
-
-
-
-
-
-
-### When someone votes, append their name to target in dictionary and then delete them from their previous vote ###
-
-#     async def updateVote(self, player, channel, playerToVote, mention):
-#         for x in self.playerlist:
-#             if x.name == player:
-#                 if playerToVote not in self.voteCounting:
-#                     if x.voteTarget != playerToVote:
-#                         self.voteCounting[playerToVote] = []
-#                         tempTimestampDict = {}
-#                         tempTimestampDict = tempTimestampDict.setdefault(x.name, time.time())
-#                         self.voteCounting["Not Voting"].append(tempTimestampDict)
-#                         self.voteCounting[x.voteTarget].remove(x.name)
-#                         x.voteTarget = playerToVote
-#                         await channel.send(f'{mention} voted for {playerToVote}!')
-#                         await self.voteLogic(channel)
-#                         await self.voteCount(channel)
-#                     else:
-#                         await channel.send("You are already voting for that player.")
-#                 else:
-#                     if x.voteTarget != playerToVote:
-#                         tempTimestampDict = {}
-#                         tempTimestampDict = tempTimestampDict.setdefault(x.name, time.time())
-#                         self.voteCounting["Not Voting"].append(tempTimestampDict)
-#                         self.voteCounting[x.voteTarget].remove(x.name)
-#                         x.voteTarget = playerToVote
-#                         await channel.send(f'{mention} voted for {playerToVote}!')
-#                         await self.voteLogic(channel)
-#                         await self.voteCount(channel)
-#                     else:
-#                         await channel.send("You are already voting for that player.")
-
-
-
-
-# ### When someone unvotes, remove their name from target in dictionary (names are stored in a list in the dictionary) ###
-# ### Append to "Not Voting" dictionary ###
-
-#     async def unvote(self, player, channel, mention):
-#         for x in self.playerlist:
-#             if x.name == player:
-#                 if x.voteTarget != "Not Voting":
-#                     self.voteCounting[x.voteTarget].remove(x.name)
-#                     x.voteTarget = "Not Voting"
-#                     if "Not Voting" not in self.voteCounting:
-#                         self.voteCounting["Not Voting"] = []
-#                         tempTimestampDict = {}
-#                         tempTimestampDict = tempTimestampDict.setdefault(x.name, time.time())
-#                         self.voteCounting["Not Voting"].append(tempTimestampDict)
-#                     else:
-#                         tempTimestampDict = {}
-#                         tempTimestampDict = tempTimestampDict.setdefault(x.name, time.time())
-#                         self.voteCounting["Not Voting"].append(tempTimestampDict)
-#                     await channel.send(f'{mention} has unvoted!')
-#                     await self.voteLogic(channel)
-#                 else:
-#                     await channel.send("You are already not voting.")
-
-
-
-# ### Do a vote count ###
-
-#     async def voteCount(self, channel, deadline=False):
-#         for targets, voters, voteStamps in self.voteCounting.items():
-#             if len(voters) == 0:
-#                 continue
-#             await channel.send(f"{targets} ({len(voters)}): " + ', '.join(y for x, y in voters[x][y]))
-#         if deadline == True:
-#             await channel.send(f'{self.isGoingToBeLynched} has been lynched, he was a ' + ' '.join([x.role.name for x in self.playerlist if x.name == self.isGoingToBeLynched]))
-#         else:
-#             await channel.send(f'{self.isGoingToBeLynched} is up for lynch!')
-
-
-# ### Vote logic??? ###
-
-#     async def voteLogic(self, channel):
-#         votingLogicDict = {k:len(v) for k, v in self.voteCounting.items()}
-#         maxVote = max(votingLogicDict.items(), key=lambda x : x[1])
-#         if maxVote[1] == 0:
-#             self.isGoingToBeLynched = "Nobody"
-#         else:
-#             countList = []
-#             for key, value in votingLogicDict.items():
-#                 if value == maxVote[1]:
-#                     countList.append(key)
-#             if len(countList) == 1 and maxVote[0] == "Not Voting":
-#                 self.isGoingToBeLynched = "Nobody"
-#             elif len(countList) == 1:
-#                 self.isGoingToBeLynched = maxVote[0]
-#             elif len(countList) == 2 and "Not Voting" in countList:
-#                 countList.remove("Not Voting")
-#                 self.isGoingToBeLynched = countList[0]
-#             # else:
-#             #     for playerVoteHistory in countList:
-#             #         for playerVoteName, playerVoteTime in playerVoteHistory.items():

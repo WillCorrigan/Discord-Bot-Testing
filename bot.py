@@ -1,6 +1,7 @@
 # bot.py
 import os
 import discord
+import asyncio
 from discord.ext import commands
 from dotenv import load_dotenv
 
@@ -17,6 +18,7 @@ bot = commands.Bot(command_prefix = '!')
 gameID = 0
 guildInstances = {} #### Global Variable
 
+
 @bot.event
 async def on_ready():
 	global guildInstances
@@ -25,15 +27,23 @@ async def on_ready():
 		print(f'{guild.name}(id: {guild.id})')
 
 
-
-
-
-
 ########### Bot Commands Start Here ###########
 
 
 
 ### Start Game ###
+
+@bot.command()
+async def load(extension_name : str):
+    """Loads an extension."""
+    try:
+        bot.load_extension(extension_name)
+    except (AttributeError, ImportError) as e:
+        await bot.say("```py\n{}: {}\n```".format(type(e).__name__, str(e)))
+        return
+    await bot.say("{} loaded.".format(extension_name))
+
+
 
 @bot.command(name='start-game', help='Initiate the game. Players can !in to join afterwards.')
 async def start_game(ctx):
@@ -41,11 +51,25 @@ async def start_game(ctx):
 	author = ctx.author.name
 	channel = ctx.channel
 	guildID = ctx.guild.id
+	guild = ctx.guild
 	channelID = ctx.channel.id
 	guildInstances[guildID] = {}
-	guildInstances[guildID][channelID] = game.Game()
-	await guildInstances[guildID][channelID].start(author, channel)
+	guildInstances[guildID] = game.Game()
+	await resetGuildToBeforeGame(ctx)
+	guildInstances[guildID].gamechannelCTX = channel
+	await guildInstances[guildID].start(author, channel)
 	await roles.establishRoles()
+	await createGuildRoles(ctx)
+
+
+@bot.command()
+async def createGuildRoles(ctx):
+	guildID = ctx.guild.id
+	await ctx.guild.create_role(name="MafiaGame")
+	await ctx.guild.create_role(name="MafiaGame")
+
+
+
 
 
 ### Join Game ###
@@ -54,17 +78,17 @@ async def start_game(ctx):
 async def join_game(ctx):
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await ctx.channel.send('A game has not been started! Type !start-game to begin.')
-	elif await guildInstances[guildID][channelID].checkIfReady() == True:
+	elif await guildInstances[guildID].checkIfReady() == True:
 		await ctx.channel.send('The game roles have been assigned, please wait for the next game to join.')
-	elif await guildInstances[guildID][channelID].checkIfSetup() == True:
+	elif await guildInstances[guildID].checkIfSetup() == True:
 		player = ctx.author.name
 		playerIdentity = ctx.author
 		playerMention = ctx.author.mention
 		channel = ctx.channel
 		mention = ctx.author.mention
-		await guildInstances[guildID][channelID].addPlayer(player, channel, mention, playerIdentity, playerMention)
+		await guildInstances[guildID].addPlayer(player, channel, mention, playerIdentity, playerMention)
 	else:
 		await ctx.channel.send('The game is currently in progress, please wait for the next game to join.')
 
@@ -75,13 +99,13 @@ async def join_game(ctx):
 async def leave_game(ctx):
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await ctx.channel.send('A game has not been started! Type !start-game to begin.')
 	else:
 		player = ctx.author.name
 		channel = ctx.channel
 		mention = ctx.author.mention
-		await guildInstances[guildID][channelID].removePlayer(player, channel, mention)
+		await guildInstances[guildID].removePlayer(player, channel, mention)
 
 
 ### Print the player list ###
@@ -91,10 +115,11 @@ async def playerlist(ctx):
 	channel = ctx.channel
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await ctx.channel.send('A game has not been started! Type !start-game to begin.')
 	else:
-		await guildInstances[guildID][channelID].printPlayerlist(channel)
+		await guildInstances[guildID].printPlayerlist(channel)
+
 
 
 ### Assign roles to players in the game ###
@@ -106,11 +131,11 @@ async def assign_roles(ctx):
 	channel = ctx.channel
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await channel.send('A game has not been started! Type !start-game to begin.')
-	elif await guildInstances[guildID][channelID].checkIfHost(player) == False:
-		await channel.send('Only the host can assign roles to players! The host is {}'.format(guildInstances[guildID][channelID].hostname))
-	elif await guildInstances[guildID][channelID].checkIfDay() or await guildInstances[guildID][channelID].checkIfNight() == True:
+	elif await guildInstances[guildID].checkIfHost(player) == False:
+		await channel.send('Only the host can assign roles to players! The host is {}'.format(guildInstances[guildID].hostname))
+	elif await guildInstances[guildID].checkIfDay() or await guildInstances[guildID].checkIfNight() == True:
 		await channel.send("The game is in progress, you can't re-assign roles.")
 	else:
 		await ctx.channel.send('How many mafiosos do you want?')
@@ -119,9 +144,25 @@ async def assign_roles(ctx):
 		msg = await bot.wait_for('message', check=check)
 		try:
 			mafia = int(msg.content)
-			await guildInstances[guildID][channelID].assignRoles(mafia, channel)
+			roleSetup = [x.id for x in ctx.guild.roles if x.name=='MafiaGame']
+			guildInstances[guildID].gameRoleID = roleSetup[0]
+			guildInstances[guildID].mafiaRoleID = roleSetup[1]
+			await guildInstances[guildID].assignRoles(mafia, channel)
+			await assignGuildRoles(ctx)
 		except ValueError:
 			await channel.send('Please enter a valid number with !assign-roles again.')
+
+@bot.command()
+async def assignGuildRoles(ctx):
+	guildID = ctx.guild.id
+	guild = ctx.guild
+	mafiarID = discord.utils.get(guild.roles, id=guildInstances[guildID].mafiaRoleID)
+	gamerID = discord.utils.get(guild.roles, id=guildInstances[guildID].gameRoleID)
+	for playerObject in guildInstances[guildID].playerlist:
+		if playerObject.role.alignment == "Mafia":
+			await playerObject.playerID.add_roles(mafiarID)
+		elif playerObject.role.alignment == "Town":
+			await playerObject.playerID.add_roles(gamerID)
 
 
 ### End the game early ###
@@ -131,13 +172,32 @@ async def stop_game(ctx):
 	player = ctx.author.name
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await ctx.channel.send('A game has not been started! Type !start-game to begin.')
-	elif await guildInstances[guildID][channelID].checkIfHost(player) == False:
-		await ctx.channel.send('Only the host can stop the game! The host is {}'.format(guildInstances[guildID][channelID].hostname))
+	elif await guildInstances[guildID].checkIfHost(player) == False:
+		await ctx.channel.send('Only the host can stop the game! The host is {}'.format(guildInstances[guildID].hostname))
 	else:
-		await guildInstances[guildID][channelID].resetGame()
+		await resetGuildToBeforeGame(ctx)
+		await guildInstances[guildID].resetGame()
 		await ctx.channel.send('The game has been stopped!')
+
+
+
+@bot.command(name='purgeroles', help='Removes the created roles and channel from the server.')
+async def resetGuildToBeforeGame(ctx):
+	guildID = ctx.guild.id
+	guild = ctx.guild
+	mafiachannelDelete = discord.utils.get(guild.text_channels, name='mafia-chat')
+	for role in ctx.guild.roles:
+		if role.name == "MafiaGame":
+			await role.delete()
+	if mafiachannelDelete != None:
+		await mafiachannelDelete.delete()
+
+
+
+
+
 
 
 
@@ -149,14 +209,20 @@ async def begin_game(ctx):
 	channel = ctx.channel
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	guild = ctx.message.guild
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await channel.send('A game has not been started! Type !start-game to begin.')
-	elif await guildInstances[guildID][channelID].checkIfHost(player) == False:
-		await channel.send('Only the host can begin the game! The host is {}'.format(guildInstances[guildID][channelID].hostname))
-	elif await guildInstances[guildID][channelID].checkIfDay() or await guildInstances[guildID][channelID].checkIfNight() == True:
+	elif await guildInstances[guildID].checkIfHost(player) == False:
+		await channel.send('Only the host can begin the game! The host is {}'.format(guildInstances[guildID].hostname))
+	elif await guildInstances[guildID].checkIfDay() or await guildInstances[guildID].checkIfNight() == True:
 		await channel.send("The game is in progress, you can't begin the game again.")
 	else:
-		await guildInstances[guildID][channelID].beginGame(channel)
+		await guild.create_text_channel(name=f'Mafia Chat', overwrites=await text_permissions(ctx))
+		mafiachannel = discord.utils.get(guild.text_channels, name='mafia-chat')
+		guildInstances[guildID].mafiachannelID = mafiachannel
+		await guildInstances[guildID].beginGame(channel)
+
+		
 
 
 
@@ -168,14 +234,14 @@ async def force_cycle(ctx):
 	player = ctx.author.name
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await channel.send('A game has not been started! Type !start-game to begin.')
-	elif await guildInstances[guildID][channelID].checkIfHost(player) == False:
-		await channel.send('Only the host can force the cycle! The host is {}'.format(guildInstances[guildID][channelID].hostname))
-	elif await guildInstances[guildID][channelID].checkIfReady() == True:
+	elif await guildInstances[guildID].checkIfHost(player) == False:
+		await channel.send('Only the host can force the cycle! The host is {}'.format(guildInstances[guildID].hostname))
+	elif await guildInstances[guildID].checkIfReady() == True:
 		await channel.send("The game is ready to start, you can't force the cycle until it begins.")
 	else:
-		await guildInstances[guildID][channelID].phaseChange(channel)
+		await guildInstances[guildID].phaseChange(channel)
 
 
 
@@ -188,18 +254,18 @@ async def vote_player(ctx, playerToVote):
 	channel = ctx.channel
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await channel.send('A game has not been started! Type !start-game to begin.')
-	elif await guildInstances[guildID][channelID].checkIfInGame(player) == False:
+	elif await guildInstances[guildID].checkIfInGame(player) == False:
 		await channel.send('You are not in the game. Type !in to join the game before it starts.')
-	elif await guildInstances[guildID][channelID].checkIfSetup() == True:
+	elif await guildInstances[guildID].checkIfSetup() == True:
 		await channel.send('The game is being set up, please wait before voting.')
-	elif await guildInstances[guildID][channelID].checkIfReady() == True:
+	elif await guildInstances[guildID].checkIfReady() == True:
 		await channel.send('The game is about to begin, please wait before voting.')
-	elif await guildInstances[guildID][channelID].checkIfCanVote(player, channel) == False:
+	elif await guildInstances[guildID].checkIfCanVote(player, channel) == False:
 		await channel.send("You are either dead or it is night and you can't vote.")
-	elif await guildInstances[guildID][channelID].checkIfValidVoteTarget(player, channel, playerToVote) == True:
-		await guildInstances[guildID][channelID].updateVote(player, channel, playerToVote, mention)
+	elif await guildInstances[guildID].checkIfValidVoteTarget(player, channel, playerToVote) == True:
+		await guildInstances[guildID].updateVote(player, channel, playerToVote, mention)
 	else:
 		await channel.send("That is not a valid vote target.")
 
@@ -213,14 +279,14 @@ async def vote_count(ctx):
 	player = ctx.author.name
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await channel.send('A game has not been started! Type !start-game to begin.')
-	elif await guildInstances[guildID][channelID].checkIfInGame(player) == False:
+	elif await guildInstances[guildID].checkIfInGame(player) == False:
 		await channel.send('You are not in the game. Type !in to join the game before it starts.')
-	elif await guildInstances[guildID][channelID].checkIfDay() == False:
+	elif await guildInstances[guildID].checkIfDay() == False:
 		await channel.send('It is not currently day time.')
 	else:
-		await guildInstances[guildID][channelID].voteCount(channel)
+		await guildInstances[guildID].voteCount(channel)
 
 
 
@@ -233,18 +299,18 @@ async def unvote_player(ctx):
 	channel = ctx.channel
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	if await guildInstances[guildID][channelID].checkIfStarted() == False:
+	if await guildInstances[guildID].checkIfStarted() == False:
 		await channel.send('A game has not been started! Type !start-game to begin.')
-	elif await guildInstances[guildID][channelID].checkIfInGame(player) == False:
+	elif await guildInstances[guildID].checkIfInGame(player) == False:
 		await channel.send('You are not in the game. Type !in to join the game before it starts.')
-	elif await guildInstances[guildID][channelID].checkIfSetup() == True:
+	elif await guildInstances[guildID].checkIfSetup() == True:
 		await channel.send('The game is being set up, please wait before unvoting.')
-	elif await guildInstances[guildID][channelID].checkIfReady() == True:
+	elif await guildInstances[guildID].checkIfReady() == True:
 		await channel.send('The game is about to begin, please wait before unvoting.')
-	elif await guildInstances[guildID][channelID].checkIfCanVote(player, channel) == False:
+	elif await guildInstances[guildID].checkIfCanVote(player, channel) == False:
 		await channel.send("You are either dead or it is night and you can't vote.")
 	else:
-		await guildInstances[guildID][channelID].unvote(player, channel, mention)
+		await guildInstances[guildID].unvote(player, channel, mention)
 		
 
 
@@ -257,116 +323,59 @@ async def deadline_test(ctx):
 	channel = ctx.channel
 	guildID = ctx.guild.id
 	channelID = ctx.channel.id
-	await guildInstances[guildID][channelID].deadlineWrapUp(channel)
+	await guildInstances[guildID].deadlineWrapUp(channel)
+
+
+@bot.command(name='Action')
+async def actions_test(ctx, target):
+	player = ctx.author.name
+	mention = ctx.author.mention
+	channel = ctx.channel
+	channelID = ctx.channel.id
+	print(channel, target, channelID)
+
+
+
+
+@bot.command()
+async def text_permissions(ctx):
+	guild = ctx.message.guild
+	guildID = ctx.guild.id
+	textChannelOverwrites = {guild.get_role(guildInstances[guildID].gameRoleID): discord.PermissionOverwrite(read_messages=False,
+		manage_channels=False,
+		manage_permissions=False, 
+		manage_webhooks=True,
+		send_messages=False,
+		send_tts_messages=False,
+		manage_messages=False,
+		embed_links=False,
+		attach_files=False,
+		read_message_history=False,
+		use_external_emojis=False,
+		add_reactions=False),
+
+	guild.default_role: discord.PermissionOverwrite(read_messages=False,
+		manage_channels=False,
+		manage_permissions=False, 
+		manage_webhooks=True,
+		send_messages=False,
+		send_tts_messages=False,
+		manage_messages=False,
+		embed_links=False,
+		attach_files=False,
+		read_message_history=False,
+		use_external_emojis=False,
+		add_reactions=False),
+
+	guild.get_role(guildInstances[guildID].mafiaRoleID): discord.PermissionOverwrite(read_messages=True, 
+		send_messages=True,
+		read_message_history=True,
+		add_reactions=True)
+}
+	return textChannelOverwrites
 
 
 bot.run(TOKEN)
-
-
-
-
-
-
-
-
-
-### Deprecated ###
-###Completed - Bot Revamp###
-
-# @client.event
-# async def on_message(message):
-# ###Check if bot is sending the message###
-#     if message.author == client.user:
-#         return
-
-
-# ###Start Game###
-#     elif message.content.startswith('!start-game'):
-#         author = message.author.name
-#         channel = message.channel 
-#         await game.start(author, channel)
-#         await roles.establishRoles()
-
-
-
-# ###Join the game###
-#     elif message.content.startswith('!in'):
-		# if await game.checkIfStarted() == False:
-		#     await message.channel.send('A game has not been started! Type !start-game to begin.')
-		# else:
-		#     player = message.author.name
-		#     playerIdentity = message.author
-		#     channel = message.channel
-		#     mention = message.author.mention
-		#     await game.addPlayer(player, channel, mention, playerIdentity)
-
-# ###Leave the game###
-#     elif message.content.startswith('!out'):
-#         if await game.checkIfStarted() == False:
-#             await message.channel.send('A game has not been started! Type !start-game to begin.')
-#         else:
-#             player = message.author.name
-#             channel = message.channel
-#             mention = message.author.mention
-#             await game.removePlayer(player, channel, mention)
-
-
-# ###Print the player list###
-#     elif message.content.startswith('!playerlist'):
-#         channel = message.channel
-#         if await game.checkIfStarted() == False:
-#             await message.channel.send('A game has not been started! Type !start-game to begin.')
-#         else:
-#             await game.printPlayerlist(channel)
-
-
-
-
-# ###Assign roles to players in the game###
-#     elif message.content.startswith('!assign-roles'):
-#         author = message.author
-#         player = message.author.name
-#         if await game.checkIfStarted() == False:
-#             await message.channel.send('A game has not been started! Type !start-game to begin.')
-#         elif await game.checkIfHost(player) == False:
-#             await message.channel.send('Only the host can assign roles to players! The host is {}'.format(game.hostname))
-#         else:
-#             await message.channel.send('How many mafiosos do you want?')
-#             def check(m):
-#                 return m.author.name == player
-#             msg = await client.wait_for('message', check=check)
-#             mafia = int(msg.content)
-#             channel = message.channel
-#             print(mafia)
-#             await game.assignRoles(mafia, channel)
-
-
-
-# ###End the game early###
-#     elif message.content.startswith('!stop'):
-#         player = message.author.name
-#         if await game.checkIfStarted() == False:
-#             await message.channel.send('A game has not been started! Type !start-game to begin.')
-#         elif await game.checkIfHost(player) == False:
-#             await message.channel.send('Only the host can stop the game! The host is {}'.format(game.hostname))
-#         else:
-#             await game.resetGame()
-#             await message.channel.send('The game has been stopped!')
-
-
-
-
-### To be completed ###
-
-
-
-
-
-
-
-
-
-
 			
 
 
