@@ -21,7 +21,6 @@ guildInstances = {} #### Global Variable
 
 @bot.event
 async def on_ready():
-	global guildInstances
 	print(f'{bot.user} is connected to the following guild(s):\n')
 	for guild in bot.guilds:
 		print(f'{guild.name}(id: {guild.id})')
@@ -45,10 +44,40 @@ async def start_game(ctx):
 	guildInstances[guildID] = {}
 	guildInstances[guildID] = game.Game()
 	await resetGuildToBeforeGame(ctx)
-	guildInstances[guildID].gamechannelCTX = channel
-	await guildInstances[guildID].start(author, channel)
 	await roles.establishRoles()
 	await createGuildRoles(ctx)
+	guildInstances[guildID].gameguildCTX = guild
+	await guildInstances[guildID].start(author, channel)
+
+@bot.command(name='change-setup', help='Alter the game setup before it starts. Takes keyworded arguments and a value like !change-setup cycle_time=30')
+async def change_setup(ctx, arg1):
+	author = ctx.author.name
+	channel = ctx.channel
+	guildID = ctx.guild.id
+	guild = ctx.guild
+	channelID = ctx.channel.id
+	player= ctx.author.name
+	arg1 = str(arg1)
+	if await guildInstances[guildID].checkIfStarted() == False:
+		await ctx.channel.send('A game has not been started! Type !start-game to begin.')
+	elif await guildInstances[guildID].checkIfReady() == True:
+		await ctx.channel.send('The game roles have been assigned, please restart the game with !stop if you want to change the rules now.')
+	elif await guildInstances[guildID].checkIfHost(player) == False:
+		await channel.send('Only the host can change the setup! The host is {}'.format(guildInstances[guildID].hostname))
+	elif arg1 == "cycle_time":
+		await ctx.channel.send('What would you like to change the cycle timer to? (Just a number for the number of seconds)')
+		def check(m):
+			return m.author.name == player
+		msg = await bot.wait_for('message', check=check)
+		try:
+			updatecycletimer = int(msg.content)
+			guildInstances[guildID].cycleTime = updatecycletimer
+			await channel.send(f"The new cycle time is {guildInstances[guildID].cycleTime} seconds.")
+		except ValueError:
+			await channel.send('Please enter a valid number with !change-setup again.')
+
+
+
 
 
 @bot.command(hidden=True)
@@ -209,6 +238,7 @@ async def begin_game(ctx):
 		await guild.create_text_channel(name=f'Mafia Chat', overwrites=await text_permissions(ctx))
 		mafiachannel = discord.utils.get(guild.text_channels, name='mafia-chat')
 		guildInstances[guildID].mafiachannelID = mafiachannel
+		gameCompleted = False
 		await guildInstances[guildID].beginGame(channel)
 
 		
@@ -302,29 +332,7 @@ async def unvote_player(ctx):
 		await guildInstances[guildID].unvote(player, channel, mention)
 		
 
-
-### test a deadline function ###
-
-@bot.command(name='deadlinetest', hidden=True)
-async def deadline_test(ctx):
-	player = ctx.author.name
-	mention = ctx.author.mention
-	channel = ctx.channel
-	guildID = ctx.guild.id
-	channelID = ctx.channel.id
-	await guildInstances[guildID].deadlineWrapUp(channel)
-
-
-@bot.command(name='Action')
-async def actions_test(ctx, target):
-	player = ctx.author.name
-	mention = ctx.author.mention
-	channel = ctx.channel
-	channelID = ctx.channel.id
-	print(channel, target, channelID)
-
-
-
+### permissions for channel creates ###
 
 @bot.command(hidden=True)
 async def text_permissions(ctx):

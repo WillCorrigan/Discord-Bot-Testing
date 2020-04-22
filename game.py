@@ -16,7 +16,7 @@ class Game:
 	def __init__(self):
 		self.isRunning = False
 		self.phase = "Setup"
-		self.cycleTime = 10
+		self.cycleTime = 30
 		self.playerlist = []
 		self.roleslist = []
 		self.hostname = "Unknown"
@@ -30,7 +30,7 @@ class Game:
 		self.mafiaRoleID = None
 		self.gameRoleID = None
 		self.mafiachannelID = None
-		self.gamechannelCTX = None
+		self.gameguildCTX = None
 		self.nightkillrequest = None
 		self.emojiChoices = None
 		self.nightkillTarget = None
@@ -207,7 +207,13 @@ class Game:
 		else:
 			self.hostname = author
 			self.isRunning = True
-			await channel.send('A new mafia game has been started in {}, type !in to join'.format(channel))
+			startgameEmbed = discord.Embed(title='A new Mafia game has been started!', description=f'This was started in the {channel} channel', color=0x3498db)
+			startgameEmbed.add_field(name='Host Name:', value=self.hostname)
+			startgameEmbed.add_field(name="Players:", value="Type !in to join this game")
+			startgameEmbed.set_thumbnail(url="https://pbs.twimg.com/profile_images/440209611983839232/-9-_fYB5_400x400.png")
+			startgameEmbed.add_field(name="Current Setup:", value=f'Cycle Time: {self.cycleTime} seconds \n Roles: ' + ', '.join((value.name for value in roles.role_database.values())), inline=False)
+			startgameEmbed.set_footer(text="Please type !change-setup to modify the setup of the game.")
+			await channel.send(embed=startgameEmbed)
 
 
 
@@ -217,9 +223,16 @@ class Game:
 		if not any(x.name == player for x in self.playerlist):
 			player = Player(name=player, role='Unknown', playerID = playerIdentity, playerMention = playerMention)
 			self.playerlist.append(player)
-			await channel.send('{} has joined the game!'.format(mention))
+			playerjoinedEmbed = discord.Embed(title=f'{player.name} has joined the game!', color=0x3498db)
+			playerjoinedEmbed.add_field(name='Host Name:', value=self.hostname)
+			playerjoinedEmbed.add_field(name="Players:", value='\n'.join(playerObject.name for playerObject in self.playerlist))
+			playerjoinedEmbed.set_thumbnail(url="https://pbs.twimg.com/profile_images/440209611983839232/-9-_fYB5_400x400.png")
+			playerjoinedEmbed.add_field(name="Current Setup:", value=f'Cycle Time: {self.cycleTime} seconds \n Roles: ' + ', '.join((value.name for value in roles.role_database.values())), inline=False)
+			playerjoinedEmbed.set_footer(text="Please type !change-setup to modify the setup of the game.")
+			await channel.send(embed=playerjoinedEmbed)
 		else:
-			await channel.send('{} is already in the game!'.format(mention))
+			playeralreadyinEmbed = discord.Embed(title=f'{player} is already in the game!')
+			await channel.send(embed=playeralreadyinEmbed)
 
 
 
@@ -249,10 +262,7 @@ class Game:
 
 	async def assignRoles(self, mafia:int, channel):
 		self.mafiaCount = mafia
-		##re-enable to stop games having over 50% mafia
-		# if mafia >= math.floor(len(self.playerlist)/2):
-		#     await channel.send("You can't have more mafia than players/townies! Try !assign-roles again or get more people.")
-		# else:
+		### put code here to check if mafia players = more than 50% of town ###
 		if mafia > len(self.playerlist):
 			await channel.send("You can't have more mafia than players!")
 		else:
@@ -280,18 +290,28 @@ class Game:
 ### Send Player PMs after Roles Assigned ###
 
 	async def sendPlayerPMs(self):
-		if self.mafiaCount >= 2:
-			for x in self.playerlist:
-				if x.role.alignment == "Mafia":
-					await x.playerID.create_dm()
-					await x.playerID.dm_channel.send(x.role.info + 'Your team is ' + ', '.join([x.name for x in self.playerlist if x.role.alignment == 'Mafia']))
-				else:
-					await x.playerID.create_dm()
-					await x.playerID.dm_channel.send(x.role.info)
-		else:
-			for x in self.playerlist:
-				await x.playerID.create_dm()
-				await x.playerID.dm_channel.send(x.role.info)
+		for playerObject in self.playerlist:
+				await playerObject.playerID.create_dm()
+				embedThis = await self.getplayerPMEmbed(playerObject)
+				await playerObject.playerID.dm_channel.send(embed=embedThis)
+
+
+	async def getplayerPMEmbed(self, player):
+
+		if player.role.alignment == "Mafia":
+			playerroleEmbed = discord.Embed(title=f'You are a {player.role.alignment} {player.role.name}!', color=0xff0000)
+			playerroleEmbed.add_field(name='Role Info:', value=f'{player.role.info}')
+			playerroleEmbed.set_thumbnail(url="https://image.freepik.com/free-vector/mafia-logo_74829-29.jpg")
+			playerroleEmbed.add_field(name='Team:', value = "\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Mafia"))
+			playerroleEmbed.set_footer(text="A special mafia channel has been set up for you where you can communicate with your team. You can vote at night on who to kill.")
+			return playerroleEmbed
+		elif player.role.alignment == "Town":
+			playerroleEmbed = discord.Embed(title=f'You are a {player.role.alignment} {player.role.name}!', color=0x7cfc00)
+			playerroleEmbed.add_field(name='Role Info:', value=f'{player.role.info}')
+			playerroleEmbed.set_thumbnail(url="https://previews.123rf.com/images/ljupco/ljupco1107/ljupco110700114/10105326-full-length-portrait-of-a-male-farmer-holding-a-pitchfork-and-bucket-with-vegetables-isolated-on-whi.jpg")
+			playerroleEmbed.set_footer(text="You can vote by typing !vote PlayerName in the thread")
+			return playerroleEmbed			
+
 
 
 
@@ -314,7 +334,6 @@ class Game:
 		self.mafiaRoleID = None
 		self.gameRoleID = None
 		self.mafiachannelID = None
-		self.gamechannelCTX = None
 
 
 
@@ -332,7 +351,6 @@ class Game:
 			value = "\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Mafia") 
 			mafiarolesEmbed.add_field(name="Role List", value=value, inline=True)
 			await self.mafiachannelID.send(embed=mafiarolesEmbed)
-			
 			await self.cycleFunctionsAuto(channel, self.phase)
 
 
@@ -453,11 +471,13 @@ class Game:
 			await channel.send("The mafia team was: " + ', '.join(x.name for x in self.playerlist if x.role.alignment == "Mafia"))
 			self.isRunning = False
 			await self.resetGame()
+			await self.resetGuildToBeforeGame()
 		elif mafiacount == 0:
 			await channel.send("The game has ended, Town wins!")
-			await channel.send("The mafia team was: " + ', '.join(x for x in self.playerlist if x.role.alignment == "Mafia"))
+			await channel.send("The mafia team was: " + ', '.join(x.name for x in self.playerlist if x.role.alignment == "Mafia"))
 			self.isRunning = False
-			await resetGame()
+			await self.resetGame()
+			await self.resetGuildToBeforeGame()
 		else:
 			return False
 
@@ -503,7 +523,13 @@ class Game:
 
 
 
-
+	async def resetGuildToBeforeGame(self):
+		mafiachannelDelete = discord.utils.get(self.gameguildCTX.text_channels, name='mafia-chat')
+		for role in self.gameguildCTX.roles:
+			if role.name == "MafiaGame":
+				await role.delete()
+		if mafiachannelDelete != None:
+			await mafiachannelDelete.delete()
 
 				
 

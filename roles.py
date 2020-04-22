@@ -18,9 +18,9 @@ class Role:
 
 async def establishRoles():
 
-    role_database['Vanilla'] = Role(name='VT',
+    role_database['Vanilla'] = Role(name='Villager',
         alignment='Town',
-        info = "You are a Vanilla Townie!\nYou have no special powers.\nYou win when all the mafiosi are dead.",
+        info = "You are a Vanilla Townie!\nYou have no special powers.\nYou win when all the mafia are dead.",
         has_night_action = False,
         sends_mafia_kill = False,)
         # has_day_action = False,
