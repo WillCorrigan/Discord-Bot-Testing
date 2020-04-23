@@ -52,6 +52,9 @@ class Game:
 	async def checkIfReady(self):
 		return self.phase == "Ready"
 
+	async def checkIfAssigning(self):
+		return self.phase == "Assigning"
+
 	async def checkIfDay(self):
 		if "Day" in self.phase:
 			return True
@@ -81,6 +84,137 @@ class Game:
 			return True
 		else:
 			return False
+
+
+
+############################################################# Game Setup Functions #############################################################
+
+### Start Game ###
+
+	async def start(self, author, channel):
+		if self.isRunning:
+			await channel.send('Mafia game already started in channel {}, you can stop it with !stop'.format(channel))
+		else:
+			self.hostname = author
+			self.isRunning = True
+			startgameEmbed = discord.Embed(title='A new Mafia game has been started!', description=f'Type !assign-roles when you are ready to begin', color=0x3498db)
+			startgameEmbed.add_field(name='Host Name:', value=self.hostname)
+			startgameEmbed.add_field(name="Players:", value="Type !in to join this game")
+			startgameEmbed.set_thumbnail(url="https://pbs.twimg.com/profile_images/440209611983839232/-9-_fYB5_400x400.png")
+			startgameEmbed.add_field(name="Current Setup:", value=f'Cycle Time: {self.cycleTime} seconds \n Roles: ' + ', '.join((value.name for value in roles.role_database.values())), inline=False)
+			startgameEmbed.set_footer(text="Please type !change-setup to modify the setup of the game.")
+			await channel.send(embed=startgameEmbed)
+
+
+
+### Add Player to the Game ###
+
+	async def addPlayer(self, player, channel, mention, playerIdentity, playerMention):
+		if not any(x.name == player for x in self.playerlist):
+			player = Player(name=player, role='Unknown', playerID = playerIdentity, playerMention = playerMention)
+			self.playerlist.append(player)
+			playerjoinedEmbed = discord.Embed(title=f'{player.name} has joined the game!', description="Type !assign-roles when you are ready to begin.", color=0x3498db)
+			playerjoinedEmbed.add_field(name='Host Name:', value=self.hostname)
+			playerjoinedEmbed.add_field(name="Players:", value='\n'.join(playerObject.name for playerObject in self.playerlist))
+			playerjoinedEmbed.set_thumbnail(url="https://pbs.twimg.com/profile_images/440209611983839232/-9-_fYB5_400x400.png")
+			playerjoinedEmbed.add_field(name="Current Setup:", value=f'Cycle Time: {self.cycleTime} seconds \n Roles: ' + ', '.join((value.name for value in roles.role_database.values())), inline=False)
+			playerjoinedEmbed.set_footer(text="Please type !change-setup to modify the setup of the game.")
+			await channel.send(embed=playerjoinedEmbed)
+		else:
+			playeralreadyinEmbed = discord.Embed(title=f'{player} is already in the game!')
+			await channel.send(embed=playeralreadyinEmbed)
+
+
+
+### Remove Player from the Game ###
+
+	async def removePlayer(self, player, channel, mention):
+		for x in self.playerlist:
+			if x.name == player:
+				self.playerlist.remove(x)
+				await channel.send('{} has left the game!'.format(mention))
+
+
+
+### Assign Roles and then PM Players - Will be reworked when custom setups get enabled###
+
+	async def assignRoles(self, mafia:int, channel):
+		self.mafiaCount = mafia
+		### put code here to check if mafia players = more than 50% of town ###
+		if mafia <= 0:
+			await channel.send("You can't have 0 mafia players, type !assign-roles again.")
+			self.phase = "Setup"
+		elif mafia > len(self.playerlist):
+			await channel.send("You can't have more mafia than players, type !assign-roles again.")
+			self.phase = "Setup"
+		elif mafia == len(self.playerlist):
+			await channel.send("You can't have the same amount of mafia members as players, type !assign-roles again.")
+			self.phase = "Setup"
+		else:
+			for z in self.playerlist:
+				z.role = "Unknown"
+			mafiacount = 0
+			while mafiacount < mafia:
+				randPlayer = self.playerlist[random.randint(0,len(self.playerlist)-1)]
+				if randPlayer.role == "Unknown":
+					randPlayer.role = roles.role_database['Mafioso']
+					mafiacount += 1
+				else:
+					continue
+			for y in self.playerlist:
+				if y.role == "Unknown":
+					y.role = roles.role_database['Vanilla']
+				else:
+					continue
+			await self.sendPlayerPMs()
+			self.phase = "Ready"
+			rolesassignedEmbed = discord.Embed(title="The game is about to begin!", description="Roles have been assigned. Type !begin when you want to start the game.", color=0x3498db)
+			await channel.send(embed=rolesassignedEmbed)
+
+
+### Send Player PMs after Roles Assigned ###
+
+	async def sendPlayerPMs(self):
+		for playerObject in self.playerlist:
+				await playerObject.playerID.create_dm()
+				embedThis = await self.getplayerPMEmbed(playerObject)
+				await playerObject.playerID.dm_channel.send(embed=embedThis)
+
+
+	async def getplayerPMEmbed(self, player):
+
+		if player.role.alignment == "Mafia":
+			playerroleEmbed = discord.Embed(title=f'You are a {player.role.alignment} {player.role.name}!', color=0xff0000)
+			playerroleEmbed.add_field(name='Role Info:', value=f'{player.role.info}')
+			playerroleEmbed.set_thumbnail(url="https://image.freepik.com/free-vector/mafia-logo_74829-29.jpg")
+			playerroleEmbed.add_field(name='Team:', value = "\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Mafia"))
+			playerroleEmbed.set_footer(text="A special mafia channel has been set up for you where you can communicate with your team. You can vote at night on who to kill.")
+			return playerroleEmbed
+		elif player.role.alignment == "Town":
+			playerroleEmbed = discord.Embed(title=f'You are a {player.role.alignment} {player.role.name}!', color=0x7cfc00)
+			playerroleEmbed.add_field(name='Role Info:', value=f'{player.role.info}')
+			playerroleEmbed.set_thumbnail(url="https://previews.123rf.com/images/ljupco/ljupco1107/ljupco110700114/10105326-full-length-portrait-of-a-male-farmer-holding-a-pitchfork-and-bucket-with-vegetables-isolated-on-whi.jpg")
+			playerroleEmbed.set_footer(text="You can vote by typing !vote PlayerName in the thread")
+			return playerroleEmbed
+
+
+### Begin the Game ###
+
+	async def beginGame(self, channel):
+		if self.phase != "Ready":
+			await channel.send('The game cannot be started until all roles have been assigned.')
+		else:
+			await self.phaseChange(channel)
+			self.voteCounting["Not Voting"] = []
+			for x in self.playerlist:
+				self.voteCounting["Not Voting"].append(x)
+			mafiarolesEmbed = discord.Embed(title="Mafia Team", description=f'The current mafia team members are as follows:', color=0x3498db)
+			value = "\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Mafia") 
+			mafiarolesEmbed.add_field(name="Role List", value=value, inline=True)
+			await self.mafiachannelID.send(embed=mafiarolesEmbed)
+			await self.cycleFunctionsAuto(channel, self.phase)
+
+
 
 
 ############################################################# Vote Logic #############################################################
@@ -163,7 +297,7 @@ class Game:
 					await channel.send("You are already not voting.")
 
 
-### Vote Count - if it's a deadline vote count then ### 
+### Vote Count - if it's a deadline vote count then embed becomes final day vote count ### 
 
 	async def voteCount(self, channel, deadline=False):
 		content = []
@@ -197,130 +331,13 @@ class Game:
 		await channel.send(embed=voteEmbed)
 
 
-############################################################# Game Setup Functions #############################################################
-
-### Start Game ###
-
-	async def start(self, author, channel):
-		if self.isRunning:
-			await channel.send('Mafia game already started in channel {}, you can stop it with !stop'.format(channel))
-		else:
-			self.hostname = author
-			self.isRunning = True
-			startgameEmbed = discord.Embed(title='A new Mafia game has been started!', description=f'This was started in the {channel} channel', color=0x3498db)
-			startgameEmbed.add_field(name='Host Name:', value=self.hostname)
-			startgameEmbed.add_field(name="Players:", value="Type !in to join this game")
-			startgameEmbed.set_thumbnail(url="https://pbs.twimg.com/profile_images/440209611983839232/-9-_fYB5_400x400.png")
-			startgameEmbed.add_field(name="Current Setup:", value=f'Cycle Time: {self.cycleTime} seconds \n Roles: ' + ', '.join((value.name for value in roles.role_database.values())), inline=False)
-			startgameEmbed.set_footer(text="Please type !change-setup to modify the setup of the game.")
-			await channel.send(embed=startgameEmbed)
-
-
-
-### Add Player to the Game ###
-
-	async def addPlayer(self, player, channel, mention, playerIdentity, playerMention):
-		if not any(x.name == player for x in self.playerlist):
-			player = Player(name=player, role='Unknown', playerID = playerIdentity, playerMention = playerMention)
-			self.playerlist.append(player)
-			playerjoinedEmbed = discord.Embed(title=f'{player.name} has joined the game!', color=0x3498db)
-			playerjoinedEmbed.add_field(name='Host Name:', value=self.hostname)
-			playerjoinedEmbed.add_field(name="Players:", value='\n'.join(playerObject.name for playerObject in self.playerlist))
-			playerjoinedEmbed.set_thumbnail(url="https://pbs.twimg.com/profile_images/440209611983839232/-9-_fYB5_400x400.png")
-			playerjoinedEmbed.add_field(name="Current Setup:", value=f'Cycle Time: {self.cycleTime} seconds \n Roles: ' + ', '.join((value.name for value in roles.role_database.values())), inline=False)
-			playerjoinedEmbed.set_footer(text="Please type !change-setup to modify the setup of the game.")
-			await channel.send(embed=playerjoinedEmbed)
-		else:
-			playeralreadyinEmbed = discord.Embed(title=f'{player} is already in the game!')
-			await channel.send(embed=playeralreadyinEmbed)
-
-
-
-### Remove Player from the Game ###
-
-	async def removePlayer(self, player, channel, mention):
-		for x in self.playerlist:
-			if x.name == player:
-				self.playerlist.remove(x)
-				await channel.send('{} has left the game!'.format(mention))
-			else:
-				await channel.send('{} is not in the game'.format(mention))
-
-
-
-### Print Player List and Roles ###
-
-	async def printPlayerlist(self, channel):
-		await channel.send([player.name for player in self.playerlist])
-
-	async def printPlayerRoles(self, channel):
-		await channel.send([f'{player.name} {player.role.name}' for player in self.playerlist])
-
-
-
-### Assign Roles and then PM Players - Will be reworked when custom setups get enabled###
-
-	async def assignRoles(self, mafia:int, channel):
-		self.mafiaCount = mafia
-		### put code here to check if mafia players = more than 50% of town ###
-		if mafia > len(self.playerlist):
-			await channel.send("You can't have more mafia than players!")
-		else:
-			for z in self.playerlist:
-				z.role = "Unknown"
-			mafiacount = 0
-			while mafiacount < mafia:
-				randPlayer = self.playerlist[random.randint(0,len(self.playerlist)-1)]
-				if randPlayer.role == "Unknown":
-					randPlayer.role = roles.role_database['Mafioso']
-					mafiacount += 1
-				else:
-					continue
-			for y in self.playerlist:
-				if y.role == "Unknown":
-					y.role = roles.role_database['Vanilla']
-				else:
-					continue
-			await self.sendPlayerPMs()
-			self.phase = "Ready"
-			await channel.send('Roles have been assigned, let the host know if you have not received a PM. Start the game with !begin')
-
-
-
-### Send Player PMs after Roles Assigned ###
-
-	async def sendPlayerPMs(self):
-		for playerObject in self.playerlist:
-				await playerObject.playerID.create_dm()
-				embedThis = await self.getplayerPMEmbed(playerObject)
-				await playerObject.playerID.dm_channel.send(embed=embedThis)
-
-
-	async def getplayerPMEmbed(self, player):
-
-		if player.role.alignment == "Mafia":
-			playerroleEmbed = discord.Embed(title=f'You are a {player.role.alignment} {player.role.name}!', color=0xff0000)
-			playerroleEmbed.add_field(name='Role Info:', value=f'{player.role.info}')
-			playerroleEmbed.set_thumbnail(url="https://image.freepik.com/free-vector/mafia-logo_74829-29.jpg")
-			playerroleEmbed.add_field(name='Team:', value = "\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Mafia"))
-			playerroleEmbed.set_footer(text="A special mafia channel has been set up for you where you can communicate with your team. You can vote at night on who to kill.")
-			return playerroleEmbed
-		elif player.role.alignment == "Town":
-			playerroleEmbed = discord.Embed(title=f'You are a {player.role.alignment} {player.role.name}!', color=0x7cfc00)
-			playerroleEmbed.add_field(name='Role Info:', value=f'{player.role.info}')
-			playerroleEmbed.set_thumbnail(url="https://previews.123rf.com/images/ljupco/ljupco1107/ljupco110700114/10105326-full-length-portrait-of-a-male-farmer-holding-a-pitchfork-and-bucket-with-vegetables-isolated-on-whi.jpg")
-			playerroleEmbed.set_footer(text="You can vote by typing !vote PlayerName in the thread")
-			return playerroleEmbed			
-
-
-
 
 ### Reset Game ###
 
 	async def resetGame(self):
 		self.isRunning = False
 		self.phase = "Setup"
-		self.cycleTime = 10
+		self.cycleTime = 30
 		self.playerlist = []
 		self.roleslist = []
 		self.hostname = "Unknown"
@@ -334,24 +351,11 @@ class Game:
 		self.mafiaRoleID = None
 		self.gameRoleID = None
 		self.mafiachannelID = None
+		self.gameguildCTX = None
+		self.nightkillrequest = None
+		self.emojiChoices = None
+		self.nightkillTarget = None
 
-
-
-### Begin the Game ###
-
-	async def beginGame(self, channel):
-		if self.phase != "Ready":
-			await channel.send('The game cannot be started until all roles have been assigned.')
-		else:
-			await self.phaseChange(channel)
-			self.voteCounting["Not Voting"] = []
-			for x in self.playerlist:
-				self.voteCounting["Not Voting"].append(x)
-			mafiarolesEmbed = discord.Embed(title="Mafia Team", description=f'The current mafia team members are as follows:', color=0xEE8700)
-			value = "\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Mafia") 
-			mafiarolesEmbed.add_field(name="Role List", value=value, inline=True)
-			await self.mafiachannelID.send(embed=mafiarolesEmbed)
-			await self.cycleFunctionsAuto(channel, self.phase)
 
 
 	async def phaseChange(self, channel):
@@ -390,37 +394,6 @@ class Game:
 				self.voteCounting["Not Voting"].append(playerObject)
 				playerObject.voteTarget = "Not Voting"
 
-
-### Send night action reminder to players ###
-	# async def getNightActionPlayers(self):
-	# 	for playerObject in self.playerlist:
-	# 		if playerObject.role.has_night_action == True:
-	# 			sendNightPMs(playerObject)
-
-
-	# async def sendNightPMs(self, player):
-	# 	await player.playerID.create_dm()
-
-	# 	if player.role.has_night_action and player.role.sends_mafia_kill == False:
-	# 		await channel.send("Please type !Action targetname to pick a target for your action")
-	# 		def check(m):
-	# 					return "!Action" in m.content and player.name == m.author.name and channel == player.playerID.dm_channel
-	# 		msg = await bot.wait_for('message', check=check)
-	# 		try:
-	# 			mafia = int(msg.content)
-	# 			await guildInstances[guildID][channelID].assignRoles(mafia, channel)
-	# 		except ValueError:
-	# 			await channel.send('Please enter a valid number with !assign-roles again.') 
-
-
-
-
-
-
-	# 	if player.role.sends_mafia_kill == True:
-	# 		await player.playerID.dm_channel.send("Please type !NK playername to pick a target to use your mafia night kill on.")
-
-	# 	await playerObject.playerID.dm_channel.send(f'It is currently {self.phase}. ')
 
 
 
@@ -467,17 +440,26 @@ class Game:
 			else:
 				continue
 		if mafiacount >= towncount:
-			await channel.send("The game has ended, Mafia wins!")
-			await channel.send("The mafia team was: " + ', '.join(x.name for x in self.playerlist if x.role.alignment == "Mafia"))
+			mafiawinsEmbed = discord.Embed(title=f'Game Over! Mafia Wins!', color=0xff0000)
+			mafiawinsEmbed.add_field(name='Mafia Team:', value="\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Mafia"))
+			mafiawinsEmbed.add_field(name="Town:", value="\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Town"))
+			mafiawinsEmbed.set_thumbnail(url="https://image.freepik.com/free-vector/mafia-logo_74829-29.jpg")
+			mafiawinsEmbed.set_footer(text="The game has now ended, thank you for playing!")
+			await channel.send(embed=mafiawinsEmbed)
 			self.isRunning = False
-			await self.resetGame()
 			await self.resetGuildToBeforeGame()
+			await self.resetGame()
+
 		elif mafiacount == 0:
-			await channel.send("The game has ended, Town wins!")
-			await channel.send("The mafia team was: " + ', '.join(x.name for x in self.playerlist if x.role.alignment == "Mafia"))
+			townwinsEmbed = discord.Embed(title=f'Game Over! Town Wins!', color=0x7cfc00)
+			townwinsEmbed.add_field(name="Town:", value="\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Town"))
+			townwinsEmbed.add_field(name='Mafia Team:', value="\n".join("{} - {}".format(playerObject.name, playerObject.role.name) for playerObject in self.playerlist if playerObject.role.alignment == "Mafia"))
+			townwinsEmbed.set_thumbnail(url="https://i.ytimg.com/vi/kM2ac85_Fqc/hqdefault.jpg")
+			townwinsEmbed.set_footer(text="The game has now ended, thank you for playing!")
+			await channel.send(embed=townwinsEmbed)
 			self.isRunning = False
-			await self.resetGame()
 			await self.resetGuildToBeforeGame()
+			await self.resetGame()
 		else:
 			return False
 
@@ -503,19 +485,18 @@ class Game:
 		while self.isRunning == True:
 			await asyncio.sleep(1)
 			self.cycleCounter += 1
-			print(self.cycleCounter)
 			if "Night" in self.phase and self.cycleCounter == (self.cycleTime - 5):
 				await self.assessMafiaKillRequest()
 			if self.cycleCounter == self.cycleTime:
 				if "Night" in self.phase:
 					await self.nightActionsWrapUp(channel)
-					await self.phaseChange(channel)
 					if await self.checkIfGameOver(channel) == False:
 						self.cycleCounter = 0
+						await self.phaseChange(channel)
 				elif "Day" in self.phase:
 					await self.deadlineWrapUp(channel)
-					await self.phaseChange(channel)
 					if await self.checkIfGameOver(channel) == False:
+						await self.phaseChange(channel)
 						await self.sendMafiaKillRequest()
 						self.cycleCounter = 0
 			else:
