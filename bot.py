@@ -71,6 +71,10 @@ async def change_setup(ctx, arg1):
 		await ctx.channel.send('The game roles have been assigned, please restart the game with !stop if you want to change the rules now.')
 	elif await guildInstances[guildID].checkIfHost(player) == False:
 		await channel.send('Only the host can change the setup! The host is {}'.format(guildInstances[guildID].hostname))
+	elif await guildInstances[guildID].checkIfAssigning() == True:
+		await channel.send("You are assigning roles, you can't change the settings now!")
+	elif await guildInstances[guildID].checkIfDay() or await guildInstances[guildID].checkIfNight() == True:
+		await channel.send("The game is in progress, you can't change settings now!.")
 	elif arg1 == "cycle_time":
 		await ctx.channel.send('What would you like to change the cycle timer to? (Just a number for the number of seconds)')
 		def check(m):
@@ -132,7 +136,7 @@ async def leave_game(ctx):
 	elif await guildInstances[guildID].checkIfReady() == True:
 		await ctx.channel.send('The game is about to begin, you cannot !out.')
 	elif await guildInstances[guildID].checkIfAssigning() == True:
-		await ctx.channel.send('Game roles are currently being assigned, please join the next game or get the host to restart.')
+		await ctx.channel.send('Game roles are currently being assigned, you cannot leave now. Ask the host to !stop if you really need to leave.')
 	elif await guildInstances[guildID].checkIfInGame(player) == False:
 		await ctx.channel.send('You are not in the game. Type !in to join the game before it starts.')
 	elif await guildInstances[guildID].checkIfDay() or await guildInstances[guildID].checkIfNight() == True:
@@ -271,20 +275,20 @@ async def begin_game(ctx):
 
 ### Force cycle change, testing only ###
 
-@bot.command(name='force-cycle', help='Force a cycle change.')
-async def force_cycle(ctx):
-	channel = ctx.channel
-	player = ctx.author.name
-	guildID = ctx.guild.id
-	channelID = ctx.channel.id
-	if await guildInstances[guildID].checkIfStarted() == False:
-		await channel.send('A game has not been started! Type !start-game to begin.')
-	elif await guildInstances[guildID].checkIfHost(player) == False:
-		await channel.send('Only the host can force the cycle! The host is {}.'.format(guildInstances[guildID].hostname))
-	elif await guildInstances[guildID].checkIfReady() == True:
-		await channel.send("The game is ready to start, you can't force the cycle until it begins.")
-	else:
-		await guildInstances[guildID].phaseChange(channel)
+# @bot.command(name='force-cycle', help='Force a cycle change.')
+# async def force_cycle(ctx):
+# 	channel = ctx.channel
+# 	player = ctx.author.name
+# 	guildID = ctx.guild.id
+# 	channelID = ctx.channel.id
+# 	if await guildInstances[guildID].checkIfStarted() == False:
+# 		await channel.send('A game has not been started! Type !start-game to begin.')
+# 	elif await guildInstances[guildID].checkIfHost(player) == False:
+# 		await channel.send('Only the host can force the cycle! The host is {}.'.format(guildInstances[guildID].hostname))
+# 	elif await guildInstances[guildID].checkIfReady() == True:
+# 		await channel.send("The game is ready to start, you can't force the cycle until it begins.")
+# 	else:
+# 		await guildInstances[guildID].phaseChange(channel)
 
 
 

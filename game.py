@@ -253,9 +253,11 @@ class Game:
 ### Vote Logic - Find the highest vote total, see if there are any similar vote totals and compare the timestamps to see who was voted highest first ###
 
 	async def voteLogic(self, channel):
-		voteLogicDict = {k:len(v) for k, v in self.voteCounting.items()}
+		voteLogicDict = {k:len(v) for k, v in self.voteCounting.items() if k != "Not Voting"}
 		maxVote = max(voteLogicDict.items(), key=lambda x : x[1])
 		if maxVote[1] == 0:
+			self.isGoingToBeLynched = "Nobody"
+		elif bool(voteLogicDict) == False:
 			self.isGoingToBeLynched = "Nobody"
 		else:
 			countList = []
